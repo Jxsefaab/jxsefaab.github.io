@@ -1,290 +1,428 @@
-import React, { useEffect, useMemo, useState } from "react";
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Contador de Porciones</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="theme-color" content="#0ea5e9">
+</head>
+<body class="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 text-slate-900 p-6">
+  <div class="max-w-6xl mx-auto grid gap-6">
+    <header class="flex items-center justify-between flex-wrap gap-4">
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-bold">Contador de Porciones</h1>
+        <p class="text-sm text-slate-600">Plan diario basado en metas de porciones. Suma por comida o por grupo.</p>
+      </div>
+      <div class="flex gap-2">
+        <button id="btn-undo" class="px-3 py-2 rounded-xl bg-white shadow hover:shadow-md">Deshacer</button>
+        <button id="btn-save-day" class="px-3 py-2 rounded-xl bg-emerald-600 text-white shadow hover:shadow-md">Guardar día</button>
+        <button id="btn-reset" class="px-3 py-2 rounded-xl bg-rose-600 text-white shadow hover:shadow-md">Reiniciar día</button>
+      </div>
+    </header>
 
-// Contador de Porciones — Plan diario basado en pauta de la nutricionista
-// Características:
-// - Metas diarias por grupo de alimentos
-// - Botones rápidos por comida (desayuno, colaciones, almuerzo, once/cena)
-// - Suma/resta en pasos de 0.5 porción
-// - Barra de progreso y alerta si se excede la meta
-// - Editar metas (por si cambian)
-// - Reinicio del día y Deshacer (undo)
-// - Persistencia en localStorage
+    <!-- Progreso global -->
+    <section class="rounded-2xl bg-white p-4 shadow-sm">
+      <div class="flex items-end justify-between gap-4 mb-3">
+        <div>
+          <h2 class="text-lg font-semibold">Progreso total</h2>
+          <p id="totals" class="text-sm text-slate-600">0 / 0 porciones</p>
+        </div>
+        <div class="text-sm text-slate-500">
+          <span id="today"></span>
+        </div>
+      </div>
+      <div class="w-full h-3 rounded-xl bg-gray-200 overflow-hidden">
+        <div id="total-bar" class="h-3 transition-all bg-blue-500" style="width:0%"></div>
+      </div>
+    </section>
 
-// Grupos base y metas por día (puedes editarlas en la UI)
-const DEFAULT_GOALS = {
-  Cereales: 3.5,
-  "Verduras (general)": 1,
-  "Verduras (libre)": 2,
-  Frutas: 4,
-  Lácteos: 3,
-  "Carnes bajas": 8,
-  "Lípidos": 1.5,
-};
+    <!-- Botones de comidas -->
+    <section class="rounded-2xl bg-white p-4 shadow-sm">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold">Agregar por comida</h2>
+        <div class="flex items-center gap-3 text-sm">
+          <button id="btn-toggle-history" class="px-3 py-1.5 rounded-xl bg-white border shadow-sm hover:shadow">Historial</button>
+          <button id="btn-export" class="px-3 py-1.5 rounded-xl bg-white border shadow-sm hover:shadow">Exportar CSV</button>
+        </div>
+      </div>
+      <div id="meals" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3"></div>
+    </section>
 
-// Presets de porciones por comida (según pauta)
-const MEAL_PRESETS = {
-  Desayuno: {
-    Lácteos: 1,
-    "Carnes bajas": 2,
-  },
-  "Colación AM": {
-    Cereales: 0.5,
-    Frutas: 2,
-    Lácteos: 1,
-    "Carnes bajas": 1,
-  },
-  Almuerzo: {
-    Cereales: 1,
+    <!-- Tarjetas de grupos -->
+    <section id="groups" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></section>
+
+    <!-- Historial (oculto por defecto) -->
+    <section id="history" class="rounded-2xl bg-white p-4 shadow-sm hidden">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold mb-2">Historial de días guardados</h2>
+        <button id="btn-clear-history" class="text-sm px-3 py-1.5 rounded-xl bg-white border hover:bg-red-50">Borrar historial</button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="text-left text-slate-600">
+            <tr id="history-head"></tr>
+          </thead>
+          <tbody id="history-body" class="divide-y"></tbody>
+        </table>
+      </div>
+      <p class="text-xs text-slate-500 mt-2">Tip: pulsa “Guardar día” al finalizar tu jornada. También se guarda automáticamente cuando cambia la fecha.</p>
+    </section>
+
+    <!-- Tips -->
+    <section class="rounded-2xl bg-white p-4 shadow-sm">
+      <h2 class="text-lg font-semibold mb-2">Consejos de uso</h2>
+      <ul class="text-sm text-slate-700 list-disc ml-5 space-y-1">
+        <li>Usa los botones de comida para cargar rápido lo que comiste.</li>
+        <li>Si cambian tus metas, ajústalas en cada tarjeta (se guardan automáticamente).</li>
+        <li>Deshacer corrige el último cambio. Guardar día registra el estado del día con fecha.</li>
+        <li>Al cambiar de fecha, el día anterior se guarda automáticamente y el contador se reinicia.</li>
+        <li>Todos los datos se almacenan en tu navegador (localStorage).</li>
+      </ul>
+    </section>
+
+    <footer class="py-6 text-center text-xs text-slate-500">
+      Hecho con ❤️ para llevar el control de porciones diarias.
+    </footer>
+  </div>
+
+<script>
+window.addEventListener('DOMContentLoaded', function () {
+  const STORAGE_KEY = "contador-porciones-josefa-v2";
+  const HISTORY_KEY  = STORAGE_KEY + ":history";
+
+  const DEFAULT_GOALS = {
+    "Cereales": 3.5,
     "Verduras (general)": 1,
-    "Verduras (libre)": 1,
-    "Carnes bajas": 2,
-    Lípidos: 0.5,
-  },
-  "Colación PM": {
-    Cereales: 1,
-    Frutas: 2,
-    "Carnes bajas": 1,
-  },
-  "Once/Cena": {
-    Cereales: 1,
-    "Verduras (libre)": 1,
-    Lácteos: 1,
-    "Carnes bajas": 2,
-    Lípidos: 1,
-  },
-};
+    "Verduras (libre)": 2,
+    "Frutas": 4,
+    "Lácteos": 3,
+    "Carnes bajas": 8,
+    "Lípidos": 1.5
+  };
 
-const STORAGE_KEY = "contador-porciones-josefa-v1";
+  const MEAL_PRESETS = {
+    "Desayuno": { "Lácteos": 1, "Carnes bajas": 2 },
+    "Colación AM": { "Cereales": 0.5, "Frutas": 2, "Lácteos": 1, "Carnes bajas": 1 },
+    "Almuerzo": { "Cereales": 1, "Verduras (general)": 1, "Verduras (libre)": 1, "Carnes bajas": 2, "Lípidos": 0.5 },
+    "Colación PM": { "Cereales": 1, "Frutas": 2, "Carnes bajas": 1 },
+    "Once/Cena": { "Cereales": 1, "Verduras (libre)": 1, "Lácteos": 1, "Carnes bajas": 2, "Lípidos": 1 }
+  };
 
-function usePersistentState(initial) {
-  const [state, setState] = useState(() => {
+  const todayStr = () => new Date().toISOString().slice(0,10);
+
+  function emptyCounts(goals) {
+    return Object.fromEntries(Object.keys(goals).map(k => [k, 0]));
+  }
+
+  function loadState() {
+    let base;
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? JSON.parse(raw) : initial;
-    } catch (e) {
-      return initial;
+      base = JSON.parse(localStorage.getItem(STORAGE_KEY)) || null;
+    } catch(e) { base = null; }
+    if (!base) {
+      base = { goals: DEFAULT_GOALS, counts: emptyCounts(DEFAULT_GOALS), historyStack: [], lastDate: todayStr() };
     }
-  });
+    const today = todayStr();
+    if (base.lastDate !== today) {
+      trySaveDay(base.lastDate, base.counts, base.goals);
+      base.counts = emptyCounts(base.goals);
+      base.historyStack = [];
+      base.lastDate = today;
+      persist(base);
+    }
+    return base;
+  }
 
-  useEffect(() => {
+  function persist(state) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [state]);
+  }
 
-  return [state, setState];
-}
+  function loadHistory() {
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || {}; }
+    catch(e){ return {}; }
+  }
 
-function ProgressBar({ value, goal }) {
-  const pct = Math.min(100, (value / goal) * 100);
-  const over = value > goal;
-  return (
-    <div className="w-full h-3 rounded-xl bg-gray-200 overflow-hidden">
-      <div
-        className={`h-3 transition-all ${
-          over ? "bg-red-500" : value >= goal ? "bg-green-500" : "bg-blue-500"
-        }`}
-        style={{ width: `${goal === 0 ? 0 : pct}%` }}
-        aria-label={`Progreso ${value}/${goal}`}
-      />
-    </div>
-  );
-}
+  function saveHistory(hist) {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(hist));
+  }
 
-export default function PortionCounter() {
-  const [data, setData] = usePersistentState({
-    goals: DEFAULT_GOALS,
-    counts: Object.fromEntries(Object.keys(DEFAULT_GOALS).map((k) => [k, 0])),
-    history: [], // para undo
-    lastReset: new Date().toISOString().slice(0, 10),
-  });
+  function roundHalf(n) { return Math.round(n * 2) / 2; }
 
-  // Reinicio automático si cambió el día
-  useEffect(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    if (data.lastReset !== today) {
-      setData((s) => ({
-        ...s,
-        counts: Object.fromEntries(Object.keys(s.goals).map((k) => [k, 0])),
-        history: [],
-        lastReset: today,
-      }));
-    }
-  }, []); // solo al cargar
+  function trySaveDay(dateKey, counts, goals) {
+    if (!dateKey) return;
+    const hist = loadHistory();
+    const snapshot = { date: dateKey, counts: { ...counts }, goals: { ...goals } };
+    hist[dateKey] = snapshot;
+    saveHistory(hist);
+  }
 
-  const groups = useMemo(() => Object.keys(data.goals), [data.goals]);
-
-  const totalProgress = useMemo(() => {
-    const goalsSum = groups.reduce((acc, g) => acc + (data.goals[g] || 0), 0);
-    const countsSum = groups.reduce((acc, g) => acc + (data.counts[g] || 0), 0);
-    return { goalsSum, countsSum };
-  }, [groups, data.goals, data.counts]);
+  let state = loadState();
 
   function pushHistory() {
-    setData((s) => ({ ...s, history: [...s.history, { counts: s.counts }] }));
+    state.historyStack.push({ counts: { ...state.counts } });
+    if (state.historyStack.length > 200) state.historyStack.shift();
   }
 
   function applyDelta(group, delta) {
     pushHistory();
-    setData((s) => ({
-      ...s,
-      counts: { ...s.counts, [group]: Math.max(0, roundHalf(s.counts[group] + delta)) },
-    }));
+    const next = (state.counts[group] || 0) + delta;
+    state.counts[group] = Math.max(0, roundHalf(next));
+    persist(state);
+    render();
   }
 
-  function addMeal(mealName) {
-    const preset = MEAL_PRESETS[mealName];
+  function addMeal(name) {
+    const preset = MEAL_PRESETS[name];
     if (!preset) return;
     pushHistory();
-    setData((s) => {
-      const next = { ...s.counts };
-      for (const [g, v] of Object.entries(preset)) {
-        next[g] = Math.max(0, roundHalf((next[g] ?? 0) + v));
-      }
-      return { ...s, counts: next };
-    });
+    for (const g in preset) {
+      const v = preset[g];
+      state.counts[g] = Math.max(0, roundHalf((state.counts[g] || 0) + v));
+    }
+    persist(state);
+    render();
   }
 
   function undo() {
-    setData((s) => {
-      const last = s.history[s.history.length - 1];
-      if (!last) return s;
-      const nh = s.history.slice(0, -1);
-      return { ...s, counts: last.counts, history: nh };
-    });
+    const last = state.historyStack.pop();
+    if (!last) return;
+    state.counts = last.counts;
+    persist(state);
+    render();
   }
 
   function resetDay() {
-    if (!confirm("¿Reiniciar conteo de hoy?\nSe pondrá todo en 0.")) return;
-    const today = new Date().toISOString().slice(0, 10);
-    setData((s) => ({
-      ...s,
-      counts: Object.fromEntries(Object.keys(s.goals).map((k) => [k, 0])),
-      history: [],
-      lastReset: today,
-    }));
+    if (!confirm("¿Reiniciar conteo de hoy?\\nSe pondrá todo en 0.")) return;
+    state.counts = emptyCounts(state.goals);
+    state.historyStack = [];
+    state.lastDate = todayStr();
+    persist(state);
+    render();
   }
 
   function updateGoal(group, value) {
     const v = Math.max(0, Number(value) || 0);
-    setData((s) => ({ ...s, goals: { ...s.goals, [group]: v } }));
+    state.goals[group] = v;
+    if (state.counts[group] == null) state.counts[group] = 0;
+    persist(state);
+    renderTotals();
+    renderGroups(); // refrescamos todo para evitar selectores avanzados
+    renderHistoryTable();
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 text-slate-900 p-6">
-      <div className="max-w-5xl mx-auto grid gap-6">
-        <header className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">Contador de Porciones</h1>
-            <p className="text-sm text-slate-600">
-              Plan diario basado en metas de porciones. Suma por comida o por grupo.
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={undo} className="px-3 py-2 rounded-xl bg-white shadow hover:shadow-md">Deshacer</button>
-            <button onClick={resetDay} className="px-3 py-2 rounded-xl bg-rose-600 text-white shadow hover:shadow-md">Reiniciar día</button>
-          </div>
-        </header>
+  function saveDayManual() {
+    const d = todayStr();
+    trySaveDay(d, state.counts, state.goals);
+    alert("Día guardado: " + d);
+    renderHistoryTable();
+  }
 
-        {/* Progreso global */}
-        <section className="rounded-2xl bg-white p-4 shadow-sm">
-          <div className="flex items-end justify-between gap-4 mb-3">
-            <div>
-              <h2 className="text-lg font-semibold">Progreso total</h2>
-              <p className="text-sm text-slate-600">
-                {totalProgress.countsSum.toFixed(1)} / {totalProgress.goalsSum.toFixed(1)} porciones
-              </p>
-            </div>
-            <div className="text-sm text-slate-500">{new Date().toLocaleDateString()}</div>
-          </div>
-          <ProgressBar value={totalProgress.countsSum} goal={totalProgress.goalsSum} />
-        </section>
+  function totals() {
+    const groups = Object.keys(state.goals);
+    const goalsSum = groups.reduce((a,g)=>a + (state.goals[g] || 0), 0);
+    const countsSum = groups.reduce((a,g)=>a + (state.counts[g] || 0), 0);
+    return { goalsSum, countsSum };
+  }
 
-        {/* Botones de comidas */}
-        <section className="rounded-2xl bg-white p-4 shadow-sm">
-          <h2 className="text-lg font-semibold mb-3">Agregar por comida</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            {Object.keys(MEAL_PRESETS).map((meal) => (
-              <button
-                key={meal}
-                onClick={() => addMeal(meal)}
-                className="rounded-2xl border border-slate-200 p-3 hover:shadow transition text-left"
-                title={Object.entries(MEAL_PRESETS[meal]).map(([g, v]) => `+${v} ${g}`).join(" | ")}
-              >
-                <div className="font-semibold">{meal}</div>
-                <div className="text-xs text-slate-600 mt-1">
-                  {Object.entries(MEAL_PRESETS[meal])
-                    .map(([g, v]) => (
-                      <span key={g} className="inline-block mr-2">+{v} {g}</span>
-                    ))}
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>
+  function render() {
+    renderTotals();
+    renderMealButtons();
+    renderGroups();
+    document.getElementById("today").textContent = new Date().toLocaleDateString();
+    document.getElementById("btn-undo").onclick = undo;
+    document.getElementById("btn-reset").onclick = resetDay;
+    document.getElementById("btn-save-day").onclick = saveDayManual;
+    document.getElementById("btn-export").onclick = exportCSV;
+    document.getElementById("btn-toggle-history").onclick = toggleHistory;
+    document.getElementById("btn-clear-history").onclick = clearHistory;
+    renderHistoryTable();
+  }
 
-        {/* Tarjetas de grupos */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {groups.map((g) => {
-            const val = data.counts[g] || 0;
-            const goal = data.goals[g] || 0;
-            const remaining = Math.max(0, roundHalf(goal - val));
-            const over = val > goal;
-            return (
-              <div key={g} className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100">
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <h3 className="font-semibold text-slate-800">{g}</h3>
-                  <div className="text-xs text-slate-500">Meta: {goal} porciones</div>
-                </div>
-                <ProgressBar value={val} goal={goal || 1} />
-                <div className="mt-2 flex items-center justify-between">
-                  <div className={`text-sm ${over ? "text-rose-600" : "text-slate-600"}`}>
-                    {over ? `+${roundHalf(val - goal)} sobre meta` : `${remaining} restante(s)`}
-                  </div>
-                  <div className="text-sm font-medium">{val.toFixed(1)}</div>
-                </div>
-                <div className="mt-3 grid grid-cols-4 gap-2">
-                  <button className="px-2 py-1 rounded-xl bg-slate-100 hover:bg-slate-200" onClick={() => applyDelta(g, -1)}>-1</button>
-                  <button className="px-2 py-1 rounded-xl bg-slate-100 hover:bg-slate-200" onClick={() => applyDelta(g, -0.5)}>-0.5</button>
-                  <button className="px-2 py-1 rounded-xl bg-slate-800 text-white hover:bg-slate-700" onClick={() => applyDelta(g, +0.5)}>+0.5</button>
-                  <button className="px-2 py-1 rounded-xl bg-slate-800 text-white hover:bg-slate-700" onClick={() => applyDelta(g, +1)}>+1</button>
-                </div>
-                <div className="mt-3 text-xs text-slate-500">Ajusta en pasos de 0.5</div>
-                <div className="mt-3 border-t pt-3">
-                  <label className="text-xs text-slate-600">Editar meta</label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <input
-                      type="number"
-                      step="0.5"
-                      className="w-24 rounded-xl border px-3 py-2 text-sm"
-                      value={goal}
-                      onChange={(e) => updateGoal(g, e.target.value)}
-                    />
-                    <span className="text-xs text-slate-500">porciones/día</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </section>
+  function renderTotals() {
+    const t = totals();
+    const pct = t.goalsSum === 0 ? 0 : Math.min(100, (t.countsSum / t.goalsSum) * 100);
+    const bar = document.getElementById("total-bar");
+    const txt = document.getElementById("totals");
+    txt.textContent = `${t.countsSum.toFixed(1)} / ${t.goalsSum.toFixed(1)} porciones`;
+    bar.style.width = pct + "%";
+    bar.classList.remove("bg-blue-500", "bg-green-500", "bg-red-500");
+    if (t.countsSum > t.goalsSum) bar.classList.add("bg-red-500");
+    else if (t.countsSum >= t.goalsSum) bar.classList.add("bg-green-500");
+    else bar.classList.add("bg-blue-500");
+  }
 
-        {/* Tips */}
-        <section className="rounded-2xl bg-white p-4 shadow-sm">
-          <h2 className="text-lg font-semibold mb-2">Consejos de uso</h2>
-          <ul className="text-sm text-slate-700 list-disc ml-5 space-y-1">
-            <li>Usa los botones de comida para cargar rápido lo que comiste.</li>
-            <li>Si cambian tus metas, ajústalas en cada tarjeta (se guardan automáticamente).</li>
-            <li>Deshacer corrige el último cambio. Reiniciar pone todo en 0 para el día.</li>
-            <li>El contador se guarda solo en tu navegador (no se comparte).</li>
-          </ul>
-        </section>
+  function renderMealButtons() {
+    const mealsDiv = document.getElementById("meals");
+    mealsDiv.innerHTML = "";
+    Object.keys(MEAL_PRESETS).forEach(meal => {
+      const btn = document.createElement("button");
+      btn.className = "rounded-2xl border border-slate-200 p-3 hover:shadow transition text-left";
+      btn.onclick = function(){ addMeal(meal); };
+      const title = document.createElement("div");
+      title.className = "font-semibold";
+      title.textContent = meal;
+      const sub = document.createElement("div");
+      sub.className = "text-xs text-slate-600 mt-1";
+      var parts = [];
+      for (var k in MEAL_PRESETS[meal]) {
+        parts.push("+" + MEAL_PRESETS[meal][k] + " " + k);
+      }
+      sub.innerHTML = parts.join(" | ");
+      btn.appendChild(title);
+      btn.appendChild(sub);
+      mealsDiv.appendChild(btn);
+    });
+  }
 
-        <footer className="py-6 text-center text-xs text-slate-500">
-          Hecho con ❤️ para llevar el control de porciones diarias.
-        </footer>
-      </div>
-    </div>
-  );
-}
+  function progressBarEl(value, goal) {
+    const pct = goal === 0 ? 0 : Math.min(100, (value / goal) * 100);
+    const color = value > goal ? "bg-red-500" : (value >= goal ? "bg-green-500" : "bg-blue-500");
+    const wrap = document.createElement("div");
+    wrap.className = "w-full h-3 rounded-xl bg-gray-200 overflow-hidden";
+    const bar = document.createElement("div");
+    bar.className = "h-3 transition-all " + color;
+    bar.style.width = pct + "%";
+    wrap.appendChild(bar);
+    return wrap;
+  }
 
-function roundHalf(n) {
-  return Math.round(n * 2) / 2;
-}
+  function renderGroups() {
+    const groupsDiv = document.getElementById("groups");
+    groupsDiv.innerHTML = "";
+    Object.keys(state.goals).forEach(function(g){
+      const val = state.counts[g] || 0;
+      const goal = state.goals[g] || 0;
+      const remaining = Math.max(0, Math.round((goal - val)*2)/2);
+      const over = val > goal;
+
+      const card = document.createElement("div");
+      card.className = "rounded-2xl bg-white p-4 shadow-sm border border-slate-100";
+
+      const top = document.createElement("div");
+      top.className = "flex items-center justify-between gap-2 mb-2";
+      const h3 = document.createElement("h3");
+      h3.className = "font-semibold text-slate-800";
+      h3.textContent = g;
+      const meta = document.createElement("div");
+      meta.className = "text-xs text-slate-500";
+      meta.textContent = "Meta: " + goal + " porciones";
+      top.appendChild(h3); top.appendChild(meta);
+      card.appendChild(top);
+
+      card.appendChild(progressBarEl(val, goal));
+
+      const mid = document.createElement("div");
+      mid.className = "mt-2 flex items-center justify-between";
+      const status = document.createElement("div");
+      status.className = "text-sm " + (over ? "text-rose-600" : "text-slate-600");
+      status.textContent = over ? ("+" + (Math.round((val - goal)*2)/2) + " sobre meta") : (remaining + " restante(s)");
+      const value = document.createElement("div");
+      value.className = "text-sm font-medium";
+      value.textContent = val.toFixed(1);
+      mid.appendChild(status); mid.appendChild(value);
+      card.appendChild(mid);
+
+      const grid = document.createElement("div");
+      grid.className = "mt-3 grid grid-cols-4 gap-2";
+      function mk(label, delta, strong){
+        const b = document.createElement("button");
+        b.className = strong ? "px-2 py-1 rounded-xl bg-slate-800 text-white hover:bg-slate-700" : "px-2 py-1 rounded-xl bg-slate-100 hover:bg-slate-200";
+        b.textContent = label;
+        b.addEventListener("click", function(){ applyDelta(g, delta); });
+        return b;
+      }
+      grid.appendChild(mk("-1", -1, false));
+      grid.appendChild(mk("-0.5", -0.5, false));
+      grid.appendChild(mk("+0.5", 0.5, true));
+      grid.appendChild(mk("+1", 1, true));
+      card.appendChild(grid);
+
+      const hint = document.createElement("div");
+      hint.className = "mt-3 text-xs text-slate-500";
+      hint.textContent = "Ajusta en pasos de 0.5";
+      card.appendChild(hint);
+
+      const edit = document.createElement("div");
+      edit.className = "mt-3 border-t pt-3";
+      const label = document.createElement("label");
+      label.className = "text-xs text-slate-600";
+      label.textContent = "Editar meta";
+      const row = document.createElement("div");
+      row.className = "flex items-center gap-2 mt-1";
+      const input = document.createElement("input");
+      input.type = "number";
+      input.step = "0.5";
+      input.className = "w-24 rounded-xl border px-3 py-2 text-sm";
+      input.value = goal;
+      input.addEventListener("change", function(e){ updateGoal(g, e.target.value); });
+      const span = document.createElement("span");
+      span.className = "text-xs text-slate-500";
+      span.textContent = "porciones/día";
+      row.appendChild(input); row.appendChild(span);
+      edit.appendChild(label); edit.appendChild(row);
+      card.appendChild(edit);
+
+      groupsDiv.appendChild(card);
+    });
+  }
+
+  function groupsList() { return Object.keys(state.goals); }
+
+  function renderHistoryTable() {
+    const hist = loadHistory();
+    const head = document.getElementById("history-head");
+    const body = document.getElementById("history-body");
+    const groups = groupsList();
+
+    head.innerHTML = ["Fecha", ...groups, "Total"].map(function(h){ return "<th class='px-2 py-2'>"+h+"</th>"; }).join("");
+
+    const rows = Object.values(hist).sort(function(a,b){ return b.date.localeCompare(a.date); });
+    body.innerHTML = rows.map(function(row){
+      const total = groups.reduce(function(acc,g){ return acc + (row.counts[g] || 0); }, 0);
+      var tds = groups.map(function(g){ return "<td class='px-2 py-2'>"+((row.counts[g]||0).toFixed(1))+"</td>"; }).join("");
+      return "<tr><td class='px-2 py-2'>"+row.date+"</td>"+tds+"<td class='px-2 py-2 font-medium'>"+total.toFixed(1)+"</td></tr>";
+    }).join("");
+
+    if (rows.length === 0) {
+      body.innerHTML = "<tr><td class='px-2 py-4 text-slate-500' colspan='"+(groups.length+2)+"'>Sin días guardados aún.</td></tr>";
+    }
+  }
+
+  function toggleHistory() {
+    const sec = document.getElementById("history");
+    if (sec.classList.contains("hidden")) sec.classList.remove("hidden"); else sec.classList.add("hidden");
+  }
+
+  function clearHistory() {
+    if (!confirm("¿Borrar todo el historial guardado?")) return;
+    saveHistory({});
+    renderHistoryTable();
+  }
+
+  function exportCSV() {
+    const hist = loadHistory();
+    const groups = groupsList();
+    const header = ["fecha"].concat(groups).concat(["total"]).join(",");
+    const lines = [header];
+    Object.values(hist).sort(function(a,b){ return a.date.localeCompare(b.date); }).forEach(function(row){
+      const total = groups.reduce(function(acc,g){ return acc + (row.counts[g] || 0); }, 0);
+      const line = [row.date].concat(groups.map(function(g){ return (row.counts[g]||0); })).concat([total]).join(",");
+      lines.push(line);
+    });
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "historial_porciones.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  render();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Contador de Porciones</title>
+  <!-- Tailwind CDN for styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="theme-color" content="#0ea5e9">
+</head>
+<body class="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 text-slate-900 p-6">
+  <div class="max-w-5xl mx-auto grid gap-6">
+    <header class="flex items-center justify-between flex-wrap gap-4">
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-bold">Contador de Porciones</h1>
+        <p class="text-sm text-slate-600">
+          Plan diario basado en metas de porciones. Suma por comida o por grupo.
+        </p>
+      </div>
+      <div class="flex gap-2">
+        <button id="btn-undo" class="px-3 py-2 rounded-xl bg-white shadow hover:shadow-md">Deshacer</button>
+        <button id="btn-reset" class="px-3 py-2 rounded-xl bg-rose-600 text-white shadow hover:shadow-md">Reiniciar día</button>
+      </div>
+    </header>
+
+    <!-- Progreso global -->
+    <section class="rounded-2xl bg-white p-4 shadow-sm">
+      <div class="flex items-end justify-between gap-4 mb-3">
+        <div>
+          <h2 class="text-lg font-semibold">Progreso total</h2>
+          <p id="totals" class="text-sm text-slate-600">0 / 0 porciones</p>
+        </div>
+        <div id="today" class="text-sm text-slate-500"></div>
+      </div>
+      <div class="w-full h-3 rounded-xl bg-gray-200 overflow-hidden">
+        <div id="total-bar" class="h-3 transition-all bg-blue-500" style="width:0%"></div>
+      </div>
+    </section>
+
+    <!-- Botones de comidas -->
+    <section class="rounded-2xl bg-white p-4 shadow-sm">
+      <h2 class="text-lg font-semibold mb-3">Agregar por comida</h2>
+      <div id="meals" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3"></div>
+    </section>
+
+    <!-- Tarjetas de grupos -->
+    <section id="groups" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></section>
+
+    <!-- Tips -->
+    <section class="rounded-2xl bg-white p-4 shadow-sm">
+      <h2 class="text-lg font-semibold mb-2">Consejos de uso</h2>
+      <ul class="text-sm text-slate-700 list-disc ml-5 space-y-1">
+        <li>Usa los botones de comida para cargar rápido lo que comiste.</li>
+        <li>Si cambian tus metas, ajústalas en cada tarjeta (se guardan automáticamente).</li>
+        <li>Deshacer corrige el último cambio. Reiniciar pone todo en 0 para el día.</li>
+        <li>El contador se guarda solo en tu navegador (no se comparte).</li>
+      </ul>
+    </section>
+
+    <footer class="py-6 text-center text-xs text-slate-500">
+      Hecho con ❤️ para llevar el control de porciones diarias.
+    </footer>
+  </div>
+
+<script>
+(() => {
+  const STORAGE_KEY = "contador-porciones-josefa-v1";
+
+  const DEFAULT_GOALS = {
+    "Cereales": 3.5,
+    "Verduras (general)": 1,
+    "Verduras (libre)": 2,
+    "Frutas": 4,
+    "Lácteos": 3,
+    "Carnes bajas": 8,
+    "Lípidos": 1.5
+  };
+
+  const MEAL_PRESETS = {
+    "Desayuno": { "Lácteos": 1, "Carnes bajas": 2 },
+    "Colación AM": { "Cereales": 0.5, "Frutas": 2, "Lácteos": 1, "Carnes bajas": 1 },
+    "Almuerzo": { "Cereales": 1, "Verduras (general)": 1, "Verduras (libre)": 1, "Carnes bajas": 2, "Lípidos": 0.5 },
+    "Colación PM": { "Cereales": 1, "Frutas": 2, "Carnes bajas": 1 },
+    "Once/Cena": { "Cereales": 1, "Verduras (libre)": 1, "Lácteos": 1, "Carnes bajas": 2, "Lípidos": 1 }
+  };
+
+  const todayStr = () => new Date().toISOString().slice(0,10);
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const base = raw ? JSON.parse(raw) : {
+        goals: DEFAULT_GOALS,
+        counts: Object.fromEntries(Object.keys(DEFAULT_GOALS).map(k => [k, 0])),
+        history: [],
+        lastReset: todayStr()
+      };
+      if (base.lastReset !== todayStr()) {
+        base.counts = Object.fromEntries(Object.keys(base.goals).map(k => [k, 0]));
+        base.history = [];
+        base.lastReset = todayStr();
+      }
+      return base;
+    } catch(e) {
+      return {
+        goals: DEFAULT_GOALS,
+        counts: Object.fromEntries(Object.keys(DEFAULT_GOALS).map(k => [k, 0])),
+        history: [],
+        lastReset: todayStr()
+      };
+    }
+  }
+
+  let state = loadState();
+
+  function save() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  function roundHalf(n) { return Math.round(n*2)/2; }
+
+  function pushHistory() {
+    state.history.push({ counts: { ...state.counts } });
+    if (state.history.length > 100) state.history.shift();
+  }
+
+  function applyDelta(group, delta) {
+    pushHistory();
+    const next = (state.counts[group] || 0) + delta;
+    state.counts[group] = Math.max(0, roundHalf(next));
+    save();
+    render();
+  }
+
+  function addMeal(name) {
+    const preset = MEAL_PRESETS[name];
+    if (!preset) return;
+    pushHistory();
+    for (const g in preset) {
+      const v = preset[g];
+      const next = (state.counts[g] || 0) + v;
+      state.counts[g] = Math.max(0, roundHalf(next));
+    }
+    save();
+    render();
+  }
+
+  function undo() {
+    const last = state.history.pop();
+    if (!last) return;
+    state.counts = last.counts;
+    save();
+    render();
+  }
+
+  function resetDay() {
+    if (!confirm("¿Reiniciar conteo de hoy?\\nSe pondrá todo en 0.")) return;
+    state.counts = Object.fromEntries(Object.keys(state.goals).map(k => [k, 0]));
+    state.history = [];
+    state.lastReset = todayStr();
+    save();
+    render();
+  }
+
+  function updateGoal(group, value) {
+    const v = Math.max(0, Number(value) || 0);
+    state.goals[group] = v;
+    // Asegurar que exista el count
+    if (state.counts[group] == null) state.counts[group] = 0;
+    save();
+    renderTotals();
+    renderGroupCard(group); // actualizar solo esa tarjeta
+  }
+
+  function totals() {
+    const groups = Object.keys(state.goals);
+    const goalsSum = groups.reduce((a,g)=>a + (state.goals[g] || 0), 0);
+    const countsSum = groups.reduce((a,g)=>a + (state.counts[g] || 0), 0);
+    return { goalsSum, countsSum };
+  }
+
+  // Rendering
+  function render() {
+    renderTotals();
+    renderMealButtons();
+    renderGroups();
+    document.getElementById("today").textContent = new Date().toLocaleDateString();
+    document.getElementById("btn-undo").onclick = undo;
+    document.getElementById("btn-reset").onclick = resetDay;
+  }
+
+  function renderTotals() {
+    const t = totals();
+    const pct = t.goalsSum === 0 ? 0 : Math.min(100, (t.countsSum / t.goalsSum) * 100);
+    const bar = document.getElementById("total-bar");
+    const txt = document.getElementById("totals");
+    txt.textContent = `${t.countsSum.toFixed(1)} / ${t.goalsSum.toFixed(1)} porciones`;
+    bar.style.width = pct + "%";
+    bar.classList.remove("bg-blue-500", "bg-green-500", "bg-red-500");
+    if (t.countsSum > t.goalsSum) bar.classList.add("bg-red-500");
+    else if (t.countsSum >= t.goalsSum) bar.classList.add("bg-green-500");
+    else bar.classList.add("bg-blue-500");
+  }
+
+  function renderMealButtons() {
+    const mealsDiv = document.getElementById("meals");
+    mealsDiv.innerHTML = "";
+    Object.keys(MEAL_PRESETS).forEach(meal => {
+      const btn = document.createElement("button");
+      btn.className = "rounded-2xl border border-slate-200 p-3 hover:shadow transition text-left";
+      btn.onclick = () => addMeal(meal);
+      const title = document.createElement("div");
+      title.className = "font-semibold";
+      title.textContent = meal;
+      const sub = document.createElement("div");
+      sub.className = "text-xs text-slate-600 mt-1";
+      sub.innerHTML = Object.entries(MEAL_PRESETS[meal]).map(([g,v]) => `<span class='inline-block mr-2'>+${v} ${g}</span>`).join("");
+      btn.appendChild(title);
+      btn.appendChild(sub);
+      mealsDiv.appendChild(btn);
+    });
+  }
+
+  function progressBarHTML(value, goal) {
+    const pct = goal === 0 ? 0 : Math.min(100, (value / goal) * 100);
+    const color = value > goal ? "bg-red-500" : (value >= goal ? "bg-green-500" : "bg-blue-500");
+    return `
+      <div class="w-full h-3 rounded-xl bg-gray-200 overflow-hidden">
+        <div class="h-3 transition-all ${color}" style="width:${pct}%"></div>
+      </div>`;
+  }
+
+  function renderGroupCard(group) {
+    const val = state.counts[group] || 0;
+    const goal = state.goals[group] || 0;
+    const remaining = Math.max(0, roundHalf(goal - val));
+    const over = val > goal;
+
+    const card = document.querySelector(\`[data-group-card="\${CSS.escape(group)}"]\`);
+    if (!card) return;
+
+    card.querySelector("[data-meta]").textContent = \`Meta: \${goal} porciones\`;
+    card.querySelector("[data-progress]").innerHTML = progressBarHTML(val, goal);
+    const status = card.querySelector("[data-status]");
+    status.textContent = over ? \`+\${roundHalf(val - goal)} sobre meta\` : \`\${remaining} restante(s)\`;
+    status.className = \`text-sm \${over ? "text-rose-600" : "text-slate-600"}\`;
+    card.querySelector("[data-value]").textContent = val.toFixed(1);
+    const input = card.querySelector("input[type='number']");
+    if (document.activeElement !== input) input.value = goal;
+  }
+
+  function renderGroups() {
+    const groupsDiv = document.getElementById("groups");
+    groupsDiv.innerHTML = "";
+    Object.keys(state.goals).forEach(g => {
+      const val = state.counts[g] || 0;
+      const goal = state.goals[g] || 0;
+      const remaining = Math.max(0, roundHalf(goal - val));
+      const over = val > goal;
+
+      const card = document.createElement("div");
+      card.className = "rounded-2xl bg-white p-4 shadow-sm border border-slate-100";
+      card.setAttribute("data-group-card", g);
+
+      const top = document.createElement("div");
+      top.className = "flex items-center justify-between gap-2 mb-2";
+      const h3 = document.createElement("h3");
+      h3.className = "font-semibold text-slate-800";
+      h3.textContent = g;
+      const meta = document.createElement("div");
+      meta.className = "text-xs text-slate-500";
+      meta.setAttribute("data-meta","");
+      meta.textContent = \`Meta: \${goal} porciones\`;
+      top.appendChild(h3); top.appendChild(meta);
+      card.appendChild(top);
+
+      const prog = document.createElement("div");
+      prog.setAttribute("data-progress","");
+      prog.innerHTML = progressBarHTML(val, goal);
+      card.appendChild(prog);
+
+      const mid = document.createElement("div");
+      mid.className = "mt-2 flex items-center justify-between";
+      const status = document.createElement("div");
+      status.setAttribute("data-status","");
+      status.className = \`text-sm \${over ? "text-rose-600" : "text-slate-600"}\`;
+      status.textContent = over ? \`+\${roundHalf(val - goal)} sobre meta\` : \`\${remaining} restante(s)\`;
+      const value = document.createElement("div");
+      value.className = "text-sm font-medium";
+      value.setAttribute("data-value","");
+      value.textContent = val.toFixed(1);
+      mid.appendChild(status); mid.appendChild(value);
+      card.appendChild(mid);
+
+      const grid = document.createElement("div");
+      grid.className = "mt-3 grid grid-cols-4 gap-2";
+      const b1 = document.createElement("button"); b1.className = "px-2 py-1 rounded-xl bg-slate-100 hover:bg-slate-200"; b1.textContent = "-1"; b1.onclick = () => applyDelta(g,-1);
+      const b2 = document.createElement("button"); b2.className = "px-2 py-1 rounded-xl bg-slate-100 hover:bg-slate-200"; b2.textContent = "-0.5"; b2.onclick = () => applyDelta(g,-0.5);
+      const b3 = document.createElement("button"); b3.className = "px-2 py-1 rounded-xl bg-slate-800 text-white hover:bg-slate-700"; b3.textContent = "+0.5"; b3.onclick = () => applyDelta(g,0.5);
+      const b4 = document.createElement("button"); b4.className = "px-2 py-1 rounded-xl bg-slate-800 text-white hover:bg-slate-700"; b4.textContent = "+1"; b4.onclick = () => applyDelta(g,1);
+      grid.appendChild(b1); grid.appendChild(b2); grid.appendChild(b3); grid.appendChild(b4);
+      card.appendChild(grid);
+
+      const hint = document.createElement("div");
+      hint.className = "mt-3 text-xs text-slate-500";
+      hint.textContent = "Ajusta en pasos de 0.5";
+      card.appendChild(hint);
+
+      const edit = document.createElement("div");
+      edit.className = "mt-3 border-t pt-3";
+      edit.innerHTML = `
+        <label class="text-xs text-slate-600">Editar meta</label>
+        <div class="flex items-center gap-2 mt-1">
+          <input type="number" step="0.5" class="w-24 rounded-xl border px-3 py-2 text-sm" value="${goal}" />
+          <span class="text-xs text-slate-500">porciones/día</span>
+        </div>`;
+      const input = edit.querySelector("input");
+      input.addEventListener("change", (e) => updateGoal(g, e.target.value));
+      card.appendChild(edit);
+
+      groupsDiv.appendChild(card);
+    });
+  }
+
+  // Initial render
+  render();
+})();
+</script>
+</body>
+</html>
